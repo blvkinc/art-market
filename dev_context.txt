@@ -1,0 +1,82 @@
+✅ Authentication & User Management
+Fix sign-up/login flows with Supabase auth.
+
+Add role selection during sign-up (buyer or seller).
+
+Store role in user metadata or a separate user_profiles table.
+
+Redirect users post-login based on role (e.g., sellers → dashboard).
+
+Allow users to update their profile info (name, bio, profile pic).
+
+Secure route protection based on user role (buyers can’t access seller-only pages).
+
+🖼️ Artwork Listing (Seller Features)
+Create a “List Artwork” form (title, description, image upload, price).
+
+Store artwork in a Supabase artworks table.
+
+Add image uploading using Supabase Storage.
+
+Connect listings to the seller’s user ID.
+
+Display seller's own artworks in their dashboard.
+
+Show stats in dashboard: total sales, likes, followers, earnings.
+
+Allow sellers to edit or delete their artwork listings.
+
+💵 Buying & Selling
+Implement “Buy” button for artwork (available to buyers only).
+
+Add orders table to track purchases (buyer ID, artwork ID, date).
+
+Prevent users from buying their own listings.
+
+Update seller dashboard with sales info from orders.
+
+❤️ Liking and Following
+Create likes table to store user-artwork likes.
+
+Create follows table to store user-user follows.
+
+Add like/follow buttons to UI, only available when logged in.
+
+Display number of likes on each artwork.
+
+Display number of followers on each seller profile.
+
+On profile pages, show who the user follows and who follows them.
+
+🔍 User Profiles & Discovery
+Create public profile pages for each user (different views for sellers/buyers).
+
+Allow buyers to browse all artwork.
+
+Allow filtering/sorting (by price, popularity, new, etc.).
+
+Create artist pages to display their bio, artwork, and stats.
+
+Add search functionality for users/artworks.
+
+🛠️ Error Handling & UI/UX Polishing
+Add proper loading/error states for all API calls.
+
+Validate all forms (e.g., price must be > 0).
+
+Prevent duplicate entries (e.g., liking the same artwork multiple times).
+
+Add notifications or toasts for actions (e.g., “Artwork liked”, “Purchase successful”).
+
+Mobile-responsive design for all pages.
+
+🔒 Security & Access Control
+Protect seller dashboard from buyers.
+
+Hide "Buy" button on seller-owned artwork.
+
+Ensure Supabase Row-Level Security (RLS) policies are in place:
+
+Only owners can modify their profile or artworks.
+
+Only buyers can create purchase orders.

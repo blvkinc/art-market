@@ -52,20 +52,18 @@ function Artists() {
 
         console.log('Starting to fetch artists...');
 
-        // First get all seller profiles
+        // First get all profiles with user_type = 'seller'
         const { data: sellerProfiles, error: sellerError } = await supabase
-          .from('seller_profiles')
+          .from('profiles')
           .select(`
             id,
-            profiles:profiles!inner (
-              id,
-              username,
-              full_name,
-              avatar_url,
-              bio,
-              user_type
-            )
-          `) as { data: SellerProfile[] | null, error: any };
+            username,
+            full_name,
+            avatar_url,
+            bio,
+            user_type
+          `)
+          .eq('user_type', 'seller');
 
         if (sellerError) {
           console.error('Error fetching seller profiles:', sellerError);
@@ -78,22 +76,22 @@ function Artists() {
           return;
         }
 
+        console.log('Found seller profiles:', sellerProfiles);
+
         // Get artwork and follower counts for each seller
         const artistsWithCounts = await Promise.all(
-          sellerProfiles.map(async (seller) => {
-            const profile = seller.profiles;
-            
+          sellerProfiles.map(async (profile) => {
             // Get artwork count
             const { count: artworksCount } = await supabase
               .from('artworks')
               .select('*', { count: 'exact', head: true })
-              .eq('user_id', profile.id);
+              .eq('artist_id', profile.id);
 
             // Get follower count
             const { count: followersCount } = await supabase
               .from('follows')
               .select('*', { count: 'exact', head: true })
-              .eq('followed_id', profile.id);
+              .eq('following_id', profile.id);
 
             return {
               id: profile.id,

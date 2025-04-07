@@ -51,6 +51,8 @@ function ArtistProfile() {
         setIsLoading(true);
         setError(null);
 
+        console.log('Fetching artist data for ID:', id);
+
         // Fetch artist profile
         const { data: artistData, error: artistError } = await supabase
           .from('profiles')
@@ -61,9 +63,7 @@ function ArtistProfile() {
             avatar_url,
             bio,
             website,
-            artworks:artworks(count),
-            followers:follows!follows_following_id_fkey(count),
-            following:follows!follows_follower_id_fkey(count)
+            user_type
           `)
           .eq('id', id)
           .single();
@@ -73,6 +73,11 @@ function ArtistProfile() {
 
         if (artistError) throw artistError;
         if (!artistData) throw new Error('Artist not found');
+        
+        // Verify this is a seller/artist
+        if (artistData.user_type !== 'seller') {
+          throw new Error('This profile is not an artist');
+        }
 
         // Check if the current user is following this artist
         if (user) {
@@ -85,6 +90,24 @@ function ArtistProfile() {
 
           setIsFollowing(!!followData);
         }
+
+        // Get artwork count
+        const { count: artworksCount } = await supabase
+          .from('artworks')
+          .select('*', { count: 'exact', head: true })
+          .eq('artist_id', id);
+
+        // Get follower count
+        const { count: followersCount } = await supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('following_id', id);
+
+        // Get following count
+        const { count: followingCount } = await supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('follower_id', id);
 
         // Fetch artist's artworks
         const { data: artworksData, error: artworksError } = await supabase
@@ -104,9 +127,9 @@ function ArtistProfile() {
         // Transform the data
         const transformedArtist = {
           ...artistData,
-          artworks_count: artistData.artworks?.[0]?.count || 0,
-          followers_count: artistData.followers?.[0]?.count || 0,
-          following_count: artistData.following?.[0]?.count || 0
+          artworks_count: artworksCount || 0,
+          followers_count: followersCount || 0,
+          following_count: followingCount || 0
         };
 
         console.log('Transformed artist:', transformedArtist);

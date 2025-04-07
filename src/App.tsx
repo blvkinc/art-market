@@ -58,6 +58,7 @@ function App() {
   const [redirectInProgress, setRedirectInProgress] = useState(false);
   const [initialAuthCheckComplete, setInitialAuthCheckComplete] = useState(false);
   const [loadingTimeout, setLoadingTimeout] = useState(false);
+  const [authRedirectAttempted, setAuthRedirectAttempted] = useState(false);
 
   // Debug current authentication state
   useEffect(() => {
@@ -68,14 +69,15 @@ function App() {
       appReady,
       redirectInProgress,
       initialAuthCheckComplete,
-      loadingTimeout
+      loadingTimeout,
+      authRedirectAttempted
     });
     
     // Mark initial auth check as complete once loading is done
     if (!isLoading && !initialAuthCheckComplete) {
       setInitialAuthCheckComplete(true);
     }
-  }, [isLoading, user, location.pathname, appReady, redirectInProgress, initialAuthCheckComplete, loadingTimeout]);
+  }, [isLoading, user, location.pathname, appReady, redirectInProgress, initialAuthCheckComplete, loadingTimeout, authRedirectAttempted]);
 
   // Set a timeout to prevent infinite loading
   useEffect(() => {
@@ -141,18 +143,21 @@ function App() {
     // 3. Already on profile page
     // 4. Not on login page 
     // 5. If a redirect is already in progress
+    // 6. If we've already attempted a redirect
     
-    if (!user || !appReady || isLoading || redirectInProgress || !initialAuthCheckComplete) return;
+    if (!user || !appReady || isLoading || redirectInProgress || !initialAuthCheckComplete || authRedirectAttempted) return;
     
     const isAuthPage = ['/login', '/register', '/forgot-password'].includes(location.pathname);
     const isOnProfilePage = location.pathname === '/profile';
     
     if (isAuthPage && !isOnProfilePage) {
-      console.log('User is authenticated and on auth page, redirecting to profile');
-      setRedirectInProgress(true);
+      console.log('User is authenticated, redirecting to profile');
+      setAuthRedirectAttempted(true);
+      
+      // Use navigate instead of window.location for smoother transitions
       navigate('/profile', { replace: true });
     }
-  }, [user, appReady, isLoading, initialAuthCheckComplete, redirectInProgress, location.pathname, navigate]);
+  }, [user, appReady, isLoading, location.pathname, redirectInProgress, initialAuthCheckComplete, authRedirectAttempted, navigate]);
 
   // Security features effect - MUST be declared in the same order every render
   useEffect(() => {

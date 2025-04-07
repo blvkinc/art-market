@@ -8,23 +8,28 @@ const ForceLogout = () => {
   useEffect(() => {
     const forceLogout = async () => {
       try {
-        console.log('Forcing logout...');
+        console.log('Starting force logout process');
         
-        // Clear all local storage
+        // Clear all storage
         localStorage.clear();
         sessionStorage.clear();
+        console.log('Cleared all storage');
         
         // Sign out from Supabase
-        await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.error('Supabase sign out error:', error);
+        } else {
+          console.log('Supabase sign out successful');
+        }
         
-        console.log('Logout successful, redirecting to login page');
-        
-        // Redirect to login page
-        navigate('/login', { replace: true });
+        // Force reload the page to clear any cached state
+        console.log('Redirecting to login page');
+        window.location.href = '/login';
       } catch (error) {
         console.error('Error during force logout:', error);
-        // Even if there's an error, try to redirect
-        navigate('/login', { replace: true });
+        // Even if there's an error, try to redirect to login
+        window.location.href = '/login';
       }
     };
 
@@ -36,7 +41,7 @@ const ForceLogout = () => {
       <div className="bg-black border border-white/10 p-8 rounded-xl w-full max-w-md">
         <h2 className="text-2xl font-bold mb-6 text-center text-white">Logging Out</h2>
         <div className="mb-6 p-4 bg-blue-500/20 border border-blue-500/50 rounded text-blue-200 text-sm">
-          <p className="mb-2">Clearing authentication state and redirecting to login...</p>
+          <p className="mb-2">You are being logged out. Please wait...</p>
         </div>
         <div className="flex justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>

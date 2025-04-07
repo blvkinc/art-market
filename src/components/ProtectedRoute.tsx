@@ -1,30 +1,63 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-const ProtectedRoute = () => {
-  const { user, isLoading } = useAuth();
+interface ProtectedRouteProps {
+  children: React.ReactNode;
+}
+
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+  const { user, isLoading, authError } = useAuth();
+  const location = useLocation();
   const [timeoutReached, setTimeoutReached] = useState(false);
+  const [redirectAttempted, setRedirectAttempted] = useState(false);
 
   useEffect(() => {
     // Set a timeout to prevent infinite loading
-    const timer = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (isLoading) {
-        console.log('Loading timeout reached, forcing navigation to login');
+        console.log('ProtectedRoute: Loading timeout reached');
         setTimeoutReached(true);
       }
-    }, 5000); // 5 seconds timeout
+    }, 5000);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(timeoutId);
   }, [isLoading]);
 
-  // If loading timeout reached, redirect to login
-  if (timeoutReached) {
-    return <Navigate to="/login" replace />;
-  }
+  useEffect(() => {
+    console.log('ProtectedRoute state:', {
+      isLoading,
+      user: user ? 'exists' : 'null',
+      authError,
+      timeoutReached,
+      redirectAttempted,
+      path: location.pathname
+    });
 
-  if (isLoading) {
-    // Show loading spinner while auth is being checked
+    // Handle redirection based on auth state
+    if (!isLoading && !redirectAttempted) {
+      if (authError) {
+        console.log('ProtectedRoute: Auth error detected, redirecting to login');
+        setRedirectAttempted(true);
+        return;
+      }
+
+      if (timeoutReached) {
+        console.log('ProtectedRoute: Loading timeout reached, redirecting to login');
+        setRedirectAttempted(true);
+        return;
+      }
+
+      if (!user) {
+        console.log('ProtectedRoute: User not authenticated, redirecting to login');
+        setRedirectAttempted(true);
+        return;
+      }
+    }
+  }, [isLoading, user, authError, timeoutReached, redirectAttempted, location.pathname]);
+
+  // Show loading state
+  if (isLoading && !timeoutReached) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
@@ -32,12 +65,14 @@ const ProtectedRoute = () => {
     );
   }
 
-  // Not authenticated
-  if (!user) {
-    return <Navigate to="/login" replace />;
+  // Redirect to login if not authenticated or if there's an error
+  if ((!isLoading && !user) || authError || timeoutReached) {
+    const from = location.pathname;
+    return <Navigate to="/login" state={{ from }} replace />;
   }
 
-  return <Outlet />;
+  // Render the protected content
+  return <>{children}</>;
 };
 
 export default ProtectedRoute; 

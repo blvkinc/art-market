@@ -9,16 +9,38 @@ const Login = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [redirectAttempted, setRedirectAttempted] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, signIn } = useAuth();
+  const { user, signIn, authError } = useAuth();
+
+  // Debug log for component mount
+  useEffect(() => {
+    console.log('Login component mounted');
+    return () => console.log('Login component unmounted');
+  }, []);
 
   // Redirect to profile if already logged in
   useEffect(() => {
-    if (user) {
-      navigate('/profile', { replace: true });
-    }
-  }, [user, navigate]);
+    const checkAuthAndRedirect = async () => {
+      console.log('Checking auth state:', {
+        user: user ? 'exists' : 'null',
+        userDetails: user,
+        redirectAttempted,
+        authError
+      });
+
+      if (user?.id && !redirectAttempted) {
+        console.log('User is authenticated, redirecting to profile...');
+        setRedirectAttempted(true);
+        
+        // Use navigate instead of window.location for smoother transitions
+        navigate('/profile', { replace: true });
+      }
+    };
+
+    checkAuthAndRedirect();
+  }, [user, redirectAttempted, navigate, authError]);
 
   // Check for query parameters
   useEffect(() => {
@@ -51,22 +73,45 @@ const Login = () => {
     setIsLoading(true);
     
     try {
-      const { error } = await signIn(email, password);
+      console.log('Starting sign in process...');
+      const { data, error } = await signIn(email, password);
       
       if (error) {
-        setError(error.message);
+        console.error('Sign in error:', error);
+        if (error.message.includes('Invalid login credentials')) {
+          setError('Invalid email or password. Please try again.');
+        } else if (error.message.includes('Email not confirmed')) {
+          setError('Please verify your email before signing in.');
+        } else {
+          setError(error.message || 'An error occurred during sign in. Please try again.');
+        }
         return;
       }
+
+      console.log('Sign in successful:', {
+        data,
+        userState: user
+      });
       
       setSuccess('Sign in successful! Redirecting...');
       
+      // Use navigate instead of window.location for smoother transitions
+      navigate('/profile', { replace: true });
+      
     } catch (err) {
-      console.error('Unexpected login error:', err);
+      console.error('Unexpected error during sign in:', err);
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
+
+  // If there's an auth error from the context, display it
+  useEffect(() => {
+    if (authError) {
+      setError(authError);
+    }
+  }, [authError]);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-black pt-20">

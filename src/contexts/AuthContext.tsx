@@ -22,6 +22,7 @@ type AuthContextType = {
   signIn: (email: string, password: string) => Promise<{ data: any; error: Error | null }>;
   signUp: (email: string, password: string, userType: 'buyer' | 'seller' | 'admin') => Promise<{ data: any; error: Error | null }>;
   signOut: () => Promise<void>;
+  authError: string | null;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,6 +55,7 @@ const fetchUserProfile = async (userId: string) => {
 const updateUserState = async (session: any, setUser: (user: User | null) => void) => {
   try {
     if (!session?.user) {
+      console.log('No user in session, setting user to null');
       setUser(null);
       return;
     }
@@ -69,7 +71,9 @@ const updateUserState = async (session: any, setUser: (user: User | null) => voi
 
     if (profileError) {
       console.error('Error fetching profile:', profileError);
+      
       // If profile doesn't exist, create it
+      console.log('Profile not found, creating new profile');
       const { data: newProfile, error: createError } = await supabase
         .from('profiles')
         .insert({
@@ -87,10 +91,16 @@ const updateUserState = async (session: any, setUser: (user: User | null) => voi
       }
       
       profile = newProfile;
+      console.log('Created new profile:', profile);
+    } else {
+      console.log('Existing profile found:', profile);
     }
 
     // Get role-specific profile
-    const roleProfileTable = profile?.user_type === 'seller' ? 'seller_profiles' : 'buyer_profiles';
+    const userType = profile?.user_type || session.user.user_metadata?.user_type || 'buyer';
+    const roleProfileTable = userType === 'seller' ? 'seller_profiles' : 'buyer_profiles';
+    
+    console.log('Checking for role profile in table:', roleProfileTable);
     const { data: roleProfile, error: roleError } = await supabase
       .from(roleProfileTable)
       .select('*')
@@ -106,11 +116,27 @@ const updateUserState = async (session: any, setUser: (user: User | null) => voi
 
       if (createRoleError) {
         console.error('Error creating role profile:', createRoleError);
+      } else {
+        console.log('Created new role profile in table:', roleProfileTable);
       }
+    } else if (roleError && roleError.code === 'PGRST116') {
+      console.log('Role profile not found, creating one in table:', roleProfileTable);
+      // Create role profile if it doesn't exist
+      const { error: createRoleError } = await supabase
+        .from(roleProfileTable)
+        .insert({ id: session.user.id });
+
+      if (createRoleError) {
+        console.error('Error creating role profile:', createRoleError);
+      } else {
+        console.log('Created new role profile in table:', roleProfileTable);
+      }
+    } else {
+      console.log('Role profile found:', roleProfile);
     }
 
     // Set the user state with complete profile data
-    setUser({
+    const userData = {
       id: session.user.id,
       email: session.user.email || '',
       username: profile?.username || session.user.email?.split('@')[0] || '',
@@ -121,8 +147,10 @@ const updateUserState = async (session: any, setUser: (user: User | null) => voi
       website: profile?.website || '',
       is_artist: profile?.is_artist || session.user.user_metadata?.is_artist || false,
       is_verified: profile?.is_verified || false
-    });
-
+    };
+    
+    console.log('Setting user state with data:', userData);
+    setUser(userData);
     console.log('User state updated successfully');
   } catch (error) {
     console.error('Error in updateUserState:', error);
@@ -140,38 +168,83 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
+  // Helper function to clear all auth state
+  const clearAuthState = () => {
+    setUser(null);
+    localStorage.clear();
+    sessionStorage.clear();
+    console.log('Auth state cleared');
+  };
+
+  // Initialize auth state
   useEffect(() => {
     let mounted = true;
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (mounted) {
-        if (session) {
-          updateUserState(session, setUser);
-        } else {
-          setUser(null);
-        }
-        setIsLoading(false);
-        setIsInitialized(true);
-      }
-    });
+    const initializeAuth = async () => {
+      try {
+        console.log('Initializing auth state...');
+        setIsLoading(true);
+        setAuthError(null);
 
-    // Listen for auth changes
+        // Get the current session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Error getting session:', sessionError);
+          setAuthError(sessionError.message);
+          clearAuthState();
+          return;
+        }
+
+        if (session?.user) {
+          console.log('Found existing session for user:', session.user.id);
+          await updateUserState(session, setUser);
+        } else {
+          console.log('No active session found');
+          clearAuthState();
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+        setAuthError(error instanceof Error ? error.message : 'Error initializing auth');
+        clearAuthState();
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+          setIsInitialized(true);
+        }
+      }
+    };
+
+    initializeAuth();
+
+    // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state change:', event);
+      console.log('Auth state changed:', event, session?.user?.id);
       
       if (!mounted) return;
 
       if (event === 'SIGNED_OUT') {
-        setUser(null);
+        console.log('User signed out, clearing state');
+        clearAuthState();
         setIsLoading(false);
         return;
       }
       
-      if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-        await updateUserState(session, setUser);
-        setIsLoading(false);
+      if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        console.log('Processing sign in event for user:', session.user.id);
+        try {
+          setIsLoading(true);
+          await updateUserState(session, setUser);
+          console.log('User state updated successfully');
+        } catch (error) {
+          console.error('Error updating user state:', error);
+          setAuthError(error instanceof Error ? error.message : 'Error updating user state');
+          clearAuthState();
+        } finally {
+          setIsLoading(false);
+        }
       }
     });
 
@@ -185,19 +258,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signIn = async (email: string, password: string) => {
     try {
       setIsLoading(true);
+      console.log('Starting sign in process for:', email);
+      
+      // Clear any existing state first
+      clearAuthState();
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
       if (error) {
+        console.error('Sign in error:', error);
         return { data: null, error };
       }
 
+      if (!data.user || !data.session) {
+        console.error('Sign in succeeded but no user or session returned');
+        return { data: null, error: new Error('No user data returned') };
+      }
+
+      console.log('Sign in successful for user:', data.user.id);
+      
+      // Update the user state
       await updateUserState(data.session, setUser);
+      
       return { data, error: null };
     } catch (error) {
-      console.error('Error signing in:', error);
+      console.error('Unexpected sign in error:', error);
       return { data: null, error: error instanceof Error ? error : new Error('An unknown error occurred') };
     } finally {
       setIsLoading(false);
@@ -334,25 +422,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Sign out function
   const signOut = async () => {
     try {
+      console.log('Starting sign out process');
       setIsLoading(true);
       
-      // Clear all local storage
-      localStorage.clear();
-      sessionStorage.clear();
+      // Clear all storage first
+      clearAuthState();
       
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase sign out error:', error);
+        throw error;
+      }
       
-      // Set user to null immediately
-      setUser(null);
+      console.log('Sign out successful');
       
       // Force reload the page to clear any cached state
       window.location.href = '/';
     } catch (error) {
-      console.error('Error signing out:', error);
-      // Even if there's an error, try to clear the user state
-      setUser(null);
+      console.error('Sign out error:', error);
+      // Even if there's an error, make sure we clear the state
+      clearAuthState();
+    } finally {
       setIsLoading(false);
     }
   };
@@ -363,7 +454,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     isSeller: user?.user_type === 'seller',
     signIn,
     signUp,
-    signOut
+    signOut,
+    authError
   };
 
   return (

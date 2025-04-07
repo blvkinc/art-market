@@ -21,7 +21,7 @@ interface Artwork {
 }
 
 const UserProfile = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('artworks');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -29,16 +29,28 @@ const UserProfile = () => {
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   
   const contentRef = useRef<HTMLDivElement>(null);
   const contentInView = useInView(contentRef, { once: true, amount: 0.1 });
   
+  // Debug log for component mount
+  useEffect(() => {
+    console.log('UserProfile component mounted', {
+      user: user ? 'exists' : 'null',
+      userDetails: user,
+      authLoading
+    });
+    return () => console.log('UserProfile component unmounted');
+  }, [user, authLoading]);
+
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (!user) {
+    if (!authLoading && !user) {
+      console.log('No user found, redirecting to login');
       navigate('/login', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, navigate, authLoading]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -92,15 +104,19 @@ const UserProfile = () => {
 
         console.log('Fetched artworks:', data);
         setArtworks(data || []);
+        setProfileLoaded(true);
       } catch (err) {
         console.error('Error fetching artworks:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch artworks');
+        setProfileLoaded(true);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchArtworks();
+    if (user) {
+      fetchArtworks();
+    }
   }, [user]);
 
   const handleSignOut = async () => {
@@ -128,6 +144,24 @@ const UserProfile = () => {
       </span>
     );
   };
+
+  // Show loading state while auth is loading
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+      </div>
+    );
+  }
+
+  // Show loading state while profile is loading
+  if (!profileLoaded && user) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+      </div>
+    );
+  }
 
   if (!user) return null;
 
