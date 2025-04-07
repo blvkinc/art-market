@@ -22,25 +22,31 @@ const Login = () => {
 
   // Redirect to profile if already logged in
   useEffect(() => {
-    const checkAuthAndRedirect = async () => {
+    const checkAuthAndRedirect = () => {
       console.log('Checking auth state:', {
         user: user ? 'exists' : 'null',
-        userDetails: user,
-        redirectAttempted,
-        authError
+        userDetails: user ? { id: user.id, email: user.email } : null,
+        redirectAttempted
       });
+
+      // Clear any previous errors when component mounts
+      if (!redirectAttempted) {
+        setError(null);
+      }
 
       if (user?.id && !redirectAttempted) {
         console.log('User is authenticated, redirecting to profile...');
         setRedirectAttempted(true);
         
-        // Use navigate instead of window.location for smoother transitions
-        navigate('/profile', { replace: true });
+        // Add a small delay to ensure user state is fully updated
+        setTimeout(() => {
+          navigate('/profile', { replace: true });
+        }, 300);
       }
     };
 
     checkAuthAndRedirect();
-  }, [user, redirectAttempted, navigate, authError]);
+  }, [user, redirectAttempted, navigate]);
 
   // Check for query parameters
   useEffect(() => {
@@ -71,9 +77,10 @@ const Login = () => {
     setError(null);
     setSuccess(null);
     setIsLoading(true);
+    setRedirectAttempted(false); // Reset redirect flag to allow new redirect attempts
     
     try {
-      console.log('Starting sign in process...');
+      console.log('Starting sign in process for:', email);
       const { data, error } = await signIn(email, password);
       
       if (error) {
@@ -89,15 +96,13 @@ const Login = () => {
       }
 
       console.log('Sign in successful:', {
-        data,
-        userState: user
+        data: data ? 'exists' : 'null',
+        userState: user ? 'exists' : 'null'
       });
       
       setSuccess('Sign in successful! Redirecting...');
       
-      // Use navigate instead of window.location for smoother transitions
-      navigate('/profile', { replace: true });
-      
+      // Let the useEffect handle the redirect to maintain consistent behavior
     } catch (err) {
       console.error('Unexpected error during sign in:', err);
       setError('An unexpected error occurred. Please try again.');

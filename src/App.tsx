@@ -28,13 +28,17 @@ import Footer from './components/Footer';
 // Error handler component for auth errors
 const AuthError = () => {
   const navigate = useNavigate();
+  const { clearAuthError } = useAuth();
   
   useEffect(() => {
     // After displaying the error, redirect to login
-    setTimeout(() => {
-      navigate('/login');
+    const timer = setTimeout(() => {
+      clearAuthError();
+      navigate('/login', { replace: true });
     }, 3000);
-  }, [navigate]);
+    
+    return () => clearTimeout(timer);
+  }, [navigate, clearAuthError]);
   
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-black pt-20">
@@ -48,49 +52,39 @@ const AuthError = () => {
   );
 };
 
-function App() {
-  const { isLoading, user } = useAuth();
-  const location = useLocation();
+// Main App component
+const App = () => {
+  const { isLoading, user, authError } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   
   // Always declare all state variables at the top level
   const [appReady, setAppReady] = useState(false);
   const [redirectInProgress, setRedirectInProgress] = useState(false);
   const [initialAuthCheckComplete, setInitialAuthCheckComplete] = useState(false);
-  const [loadingTimeout, setLoadingTimeout] = useState(false);
   const [authRedirectAttempted, setAuthRedirectAttempted] = useState(false);
 
   // Debug current authentication state
   useEffect(() => {
     console.log('App: Current auth state -', { 
       isLoading, 
-      user: user?.id ? { id: user.id, email: user.email, userType: user.user_type } : null, 
+      user: user ? { id: user.id, type: user.user_type } : null, 
       pathname: location.pathname,
-      appReady,
-      redirectInProgress,
-      initialAuthCheckComplete,
-      loadingTimeout,
-      authRedirectAttempted
+      appReady
     });
-    
-    // Mark initial auth check as complete once loading is done
-    if (!isLoading && !initialAuthCheckComplete) {
-      setInitialAuthCheckComplete(true);
-    }
-  }, [isLoading, user, location.pathname, appReady, redirectInProgress, initialAuthCheckComplete, loadingTimeout, authRedirectAttempted]);
+  }, [isLoading, user, location.pathname, appReady]);
 
   // Set a timeout to prevent infinite loading
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (isLoading) {
-        console.log('App loading timeout reached, forcing app ready state');
-        setLoadingTimeout(true);
+      if (!appReady) {
+        console.log('App ready timeout triggered, forcing render');
         setAppReady(true);
       }
-    }, 5000); // 5 seconds timeout
+    }, 3000); // 3 seconds timeout
 
     return () => clearTimeout(timer);
-  }, [isLoading]);
+  }, [appReady]);
 
   // Handle authentication redirects and hash fragments
   useEffect(() => {
@@ -114,7 +108,15 @@ function App() {
       navigate('/login?verification_failed=true', { replace: true });
       return;
     }
-  }, [location.pathname, navigate, redirectInProgress]);
+  }, [location.pathname, navigate, redirectInProgress, location.hash]);
+
+  // Clear localStorage on auth errors to ensure clean state
+  useEffect(() => {
+    if (authError) {
+      console.log('Auth error detected, clearing local storage');
+      localStorage.clear();
+    }
+  }, [authError]);
 
   // Reset redirect flag when URL changes
   useEffect(() => {
@@ -123,29 +125,9 @@ function App() {
     }
   }, [location.pathname, location.hash, redirectInProgress]);
 
-  // Make sure app is ready even if auth loading takes too long
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!appReady) {
-        setAppReady(true);
-        console.log('App ready timeout triggered, forcing render');
-      }
-    }, 2000); // Force ready after 2 seconds
-
-    return () => clearTimeout(timer);
-  }, [appReady]);
-
   // Auto-redirect to profile when user is authenticated
   useEffect(() => {
-    // Don't redirect if:
-    // 1. App is not ready yet or auth is loading
-    // 2. No user is logged in
-    // 3. Already on profile page
-    // 4. Not on login page 
-    // 5. If a redirect is already in progress
-    // 6. If we've already attempted a redirect
-    
-    if (!user || !appReady || isLoading || redirectInProgress || !initialAuthCheckComplete || authRedirectAttempted) return;
+    if (!user || !appReady || isLoading || redirectInProgress || authRedirectAttempted) return;
     
     const isAuthPage = ['/login', '/register', '/forgot-password'].includes(location.pathname);
     const isOnProfilePage = location.pathname === '/profile';
@@ -153,11 +135,9 @@ function App() {
     if (isAuthPage && !isOnProfilePage) {
       console.log('User is authenticated, redirecting to profile');
       setAuthRedirectAttempted(true);
-      
-      // Use navigate instead of window.location for smoother transitions
       navigate('/profile', { replace: true });
     }
-  }, [user, appReady, isLoading, location.pathname, redirectInProgress, initialAuthCheckComplete, authRedirectAttempted, navigate]);
+  }, [user, appReady, isLoading, location.pathname, redirectInProgress, authRedirectAttempted, navigate]);
 
   // Security features effect - MUST be declared in the same order every render
   useEffect(() => {
@@ -213,8 +193,8 @@ function App() {
     };
   }, []);
 
-  // Render different UI based on loading state, but keep hooks consistent
-  if (!appReady && isLoading) {
+  // Show loading state
+  if (isLoading && !appReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">
         <div className="text-white text-center">
@@ -251,16 +231,30 @@ function App() {
         <Route path="/force-logout" element={<ForceLogout />} />
         
         {/* Protected routes */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="/profile" element={<UserProfile />} />
-          <Route path="/profile/edit" element={<EditProfile />} />
-          <Route path="/upload" element={<UploadArtwork />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-        </Route>
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <UserProfile />
+          </ProtectedRoute>
+        } />
+        <Route path="/profile/edit" element={
+          <ProtectedRoute>
+            <EditProfile />
+          </ProtectedRoute>
+        } />
+        <Route path="/upload" element={
+          <ProtectedRoute>
+            <UploadArtwork />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin" element={
+          <ProtectedRoute>
+            <AdminDashboard />
+          </ProtectedRoute>
+        } />
       </Routes>
       <Footer />
     </div>
   );
-}
+};
 
 export default App; 

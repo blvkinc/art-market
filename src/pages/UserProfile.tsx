@@ -37,12 +37,23 @@ const UserProfile = () => {
   // Debug log for component mount
   useEffect(() => {
     console.log('UserProfile component mounted', {
-      user: user ? 'exists' : 'null',
-      userDetails: user,
+      user: user ? { id: user.id, type: user.user_type } : 'null',
       authLoading
     });
-    return () => console.log('UserProfile component unmounted');
-  }, [user, authLoading]);
+    
+    // Force profile load after a timeout in case it gets stuck
+    const timer = setTimeout(() => {
+      if (!profileLoaded && user) {
+        console.log('Forcing profile loaded state after timeout');
+        setProfileLoaded(true);
+      }
+    }, 3000);
+    
+    return () => {
+      console.log('UserProfile component unmounted');
+      clearTimeout(timer);
+    };
+  }, [user, authLoading, profileLoaded]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -102,20 +113,25 @@ const UserProfile = () => {
           throw error;
         }
 
-        console.log('Fetched artworks:', data);
+        console.log('Fetched artworks:', data ? `${data.length} artworks` : 'none');
         setArtworks(data || []);
-        setProfileLoaded(true);
       } catch (err) {
         console.error('Error fetching artworks:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch artworks');
-        setProfileLoaded(true);
       } finally {
         setIsLoading(false);
+        setProfileLoaded(true);
       }
     };
 
     if (user) {
-      fetchArtworks();
+      // Short delay to ensure user data is fully loaded
+      const timer = setTimeout(() => {
+        fetchArtworks();
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setProfileLoaded(true);
     }
   }, [user]);
 

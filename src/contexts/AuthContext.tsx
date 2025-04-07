@@ -23,6 +23,7 @@ type AuthContextType = {
   signUp: (email: string, password: string, userType: 'buyer' | 'seller' | 'admin') => Promise<{ data: any; error: Error | null }>;
   signOut: () => Promise<void>;
   authError: string | null;
+  clearAuthError: () => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -170,6 +171,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Helper function to clear auth error
+  const clearAuthError = () => {
+    setAuthError(null);
+  };
+
   // Helper function to clear all auth state
   const clearAuthState = () => {
     setUser(null);
@@ -198,6 +204,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
 
+        console.log('Session check result:', session ? 'Found session' : 'No session');
+
         if (session?.user) {
           console.log('Found existing session for user:', session.user.id);
           await updateUserState(session, setUser);
@@ -213,6 +221,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (mounted) {
           setIsLoading(false);
           setIsInitialized(true);
+          console.log('Auth initialization complete');
         }
       }
     };
@@ -237,7 +246,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         try {
           setIsLoading(true);
           await updateUserState(session, setUser);
-          console.log('User state updated successfully');
+          console.log('User state updated successfully after', event);
         } catch (error) {
           console.error('Error updating user state:', error);
           setAuthError(error instanceof Error ? error.message : 'Error updating user state');
@@ -425,20 +434,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.log('Starting sign out process');
       setIsLoading(true);
       
-      // Clear all storage first
-      clearAuthState();
-      
-      // Sign out from Supabase
+      // Sign out from Supabase first
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Supabase sign out error:', error);
         throw error;
       }
       
+      // Then clear the state
+      clearAuthState();
       console.log('Sign out successful');
-      
-      // Force reload the page to clear any cached state
-      window.location.href = '/';
     } catch (error) {
       console.error('Sign out error:', error);
       // Even if there's an error, make sure we clear the state
@@ -455,7 +460,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     signIn,
     signUp,
     signOut,
-    authError
+    authError,
+    clearAuthError
   };
 
   return (

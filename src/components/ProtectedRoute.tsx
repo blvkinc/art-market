@@ -12,18 +12,19 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const [timeoutReached, setTimeoutReached] = useState(false);
   const [redirectAttempted, setRedirectAttempted] = useState(false);
 
+  // Set a timeout to prevent infinite loading
   useEffect(() => {
-    // Set a timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
       if (isLoading) {
         console.log('ProtectedRoute: Loading timeout reached');
         setTimeoutReached(true);
       }
-    }, 5000);
+    }, 5000); // 5 seconds timeout
 
     return () => clearTimeout(timeoutId);
   }, [isLoading]);
 
+  // Debug current state
   useEffect(() => {
     console.log('ProtectedRoute state:', {
       isLoading,
@@ -33,28 +34,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
       redirectAttempted,
       path: location.pathname
     });
-
-    // Handle redirection based on auth state
-    if (!isLoading && !redirectAttempted) {
-      if (authError) {
-        console.log('ProtectedRoute: Auth error detected, redirecting to login');
-        setRedirectAttempted(true);
-        return;
-      }
-
-      if (timeoutReached) {
-        console.log('ProtectedRoute: Loading timeout reached, redirecting to login');
-        setRedirectAttempted(true);
-        return;
-      }
-
-      if (!user) {
-        console.log('ProtectedRoute: User not authenticated, redirecting to login');
-        setRedirectAttempted(true);
-        return;
-      }
-    }
-  }, [isLoading, user, authError, timeoutReached, redirectAttempted, location.pathname]);
+  }, [isLoading, user, location.pathname, timeoutReached, redirectAttempted, authError]);
 
   // Show loading state
   if (isLoading && !timeoutReached) {
@@ -65,13 +45,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     );
   }
 
-  // Redirect to login if not authenticated or if there's an error
-  if ((!isLoading && !user) || authError || timeoutReached) {
-    const from = location.pathname;
-    return <Navigate to="/login" state={{ from }} replace />;
+  // Redirect to login if not authenticated
+  if ((!isLoading && !user) || timeoutReached) {
+    console.log('No user or timeout reached, redirecting to login');
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
-  // Render the protected content
+  // Render children if authenticated
   return <>{children}</>;
 };
 
