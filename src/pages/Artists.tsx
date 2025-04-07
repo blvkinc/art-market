@@ -27,6 +27,18 @@ interface Artist {
   followers_count: number;
 }
 
+interface SellerProfile {
+  id: string;
+  profiles: {
+    id: string;
+    username: string;
+    full_name: string;
+    avatar_url: string;
+    bio: string;
+    user_type: string;
+  };
+}
+
 function Artists() {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -40,47 +52,63 @@ function Artists() {
 
         console.log('Starting to fetch artists...');
 
-        // Get all seller profiles with their artwork and follower counts
-        const { data: artistsData, error: artistsError } = await supabase
-          .from('profiles')
+        // First get all seller profiles
+        const { data: sellerProfiles, error: sellerError } = await supabase
+          .from('seller_profiles')
           .select(`
             id,
-            username,
-            full_name,
-            avatar_url,
-            bio,
-            user_type,
-            artworks:artworks(count),
-            followers:follows(count)
-          `)
-          .eq('user_type', 'seller');
+            profiles:profiles!inner (
+              id,
+              username,
+              full_name,
+              avatar_url,
+              bio,
+              user_type
+            )
+          `) as { data: SellerProfile[] | null, error: any };
 
-        console.log('Query result:', { data: artistsData, error: artistsError });
-
-        if (artistsError) {
-          console.error('Error fetching profiles:', artistsError);
-          throw artistsError;
+        if (sellerError) {
+          console.error('Error fetching seller profiles:', sellerError);
+          throw sellerError;
         }
 
-        if (!artistsData || artistsData.length === 0) {
+        if (!sellerProfiles || sellerProfiles.length === 0) {
           console.log('No sellers found in the database');
           setArtists([]);
           return;
         }
 
-        // Transform the data to match our Artist interface
-        const transformedArtists = artistsData.map(seller => ({
-          id: seller.id,
-          username: seller.username,
-          full_name: seller.full_name,
-          avatar_url: seller.avatar_url,
-          bio: seller.bio,
-          artworks_count: seller.artworks?.[0]?.count || 0,
-          followers_count: seller.followers?.[0]?.count || 0
-        }));
+        // Get artwork and follower counts for each seller
+        const artistsWithCounts = await Promise.all(
+          sellerProfiles.map(async (seller) => {
+            const profile = seller.profiles;
+            
+            // Get artwork count
+            const { count: artworksCount } = await supabase
+              .from('artworks')
+              .select('*', { count: 'exact', head: true })
+              .eq('user_id', profile.id);
 
-        console.log('Transformed artists data:', transformedArtists);
-        setArtists(transformedArtists);
+            // Get follower count
+            const { count: followersCount } = await supabase
+              .from('follows')
+              .select('*', { count: 'exact', head: true })
+              .eq('followed_id', profile.id);
+
+            return {
+              id: profile.id,
+              username: profile.username,
+              full_name: profile.full_name,
+              avatar_url: profile.avatar_url,
+              bio: profile.bio,
+              artworks_count: artworksCount || 0,
+              followers_count: followersCount || 0
+            };
+          })
+        );
+
+        console.log('Transformed artists data:', artistsWithCounts);
+        setArtists(artistsWithCounts);
       } catch (err) {
         console.error('Detailed error:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch artists');

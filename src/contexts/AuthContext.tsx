@@ -52,31 +52,94 @@ const fetchUserProfile = async (userId: string) => {
 
 // Helper function to update user state with profile data
 const updateUserState = async (session: any, setUser: (user: User | null) => void) => {
-  if (!session?.user) {
-    setUser(null);
-    return;
-  }
+  try {
+    if (!session?.user) {
+      setUser(null);
+      return;
+    }
 
-  const profile = await fetchUserProfile(session.user.id);
-  
-  // Always set a user object even if profile fetch fails
-  setUser({
-    id: session.user.id,
-    email: session.user.email || '',
-    username: profile?.username || session.user.email?.split('@')[0] || '',
-    full_name: profile?.full_name || '',
-    avatar_url: profile?.avatar_url || '',
-    user_type: profile?.user_type || session.user.user_metadata?.user_type || 'buyer',
-    bio: profile?.bio || '',
-    website: profile?.website || '',
-    is_artist: profile?.is_artist || session.user.user_metadata?.is_artist || false,
-    is_verified: profile?.is_verified || false
-  });
+    console.log('Updating user state for:', session.user.id);
+    
+    // First try to get the profile
+    let { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+
+    if (profileError) {
+      console.error('Error fetching profile:', profileError);
+      // If profile doesn't exist, create it
+      const { data: newProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert({
+          id: session.user.id,
+          username: session.user.email?.split('@')[0] || '',
+          user_type: session.user.user_metadata?.user_type || 'buyer',
+          is_artist: session.user.user_metadata?.is_artist || false
+        })
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('Error creating profile:', createError);
+        throw createError;
+      }
+      
+      profile = newProfile;
+    }
+
+    // Get role-specific profile
+    const roleProfileTable = profile?.user_type === 'seller' ? 'seller_profiles' : 'buyer_profiles';
+    const { data: roleProfile, error: roleError } = await supabase
+      .from(roleProfileTable)
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+
+    if (roleError && roleError.code !== 'PGRST116') { // PGRST116 is "not found"
+      console.error('Error fetching role profile:', roleError);
+      // Create role profile if it doesn't exist
+      const { error: createRoleError } = await supabase
+        .from(roleProfileTable)
+        .insert({ id: session.user.id });
+
+      if (createRoleError) {
+        console.error('Error creating role profile:', createRoleError);
+      }
+    }
+
+    // Set the user state with complete profile data
+    setUser({
+      id: session.user.id,
+      email: session.user.email || '',
+      username: profile?.username || session.user.email?.split('@')[0] || '',
+      full_name: profile?.full_name || '',
+      avatar_url: profile?.avatar_url || '',
+      user_type: profile?.user_type || session.user.user_metadata?.user_type || 'buyer',
+      bio: profile?.bio || '',
+      website: profile?.website || '',
+      is_artist: profile?.is_artist || session.user.user_metadata?.is_artist || false,
+      is_verified: profile?.is_verified || false
+    });
+
+    console.log('User state updated successfully');
+  } catch (error) {
+    console.error('Error in updateUserState:', error);
+    // Set a basic user state even if profile fetch fails
+    setUser({
+      id: session.user.id,
+      email: session.user.email || '',
+      user_type: session.user.user_metadata?.user_type || 'buyer',
+      is_artist: session.user.user_metadata?.is_artist || false
+    });
+  }
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -84,8 +147,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (mounted) {
-        updateUserState(session, setUser);
+        if (session) {
+          updateUserState(session, setUser);
+        } else {
+          setUser(null);
+        }
         setIsLoading(false);
+        setIsInitialized(true);
       }
     });
 
@@ -267,20 +335,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signOut = async () => {
     try {
       setIsLoading(true);
+      
+      // Clear all local storage
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      
+      // Set user to null immediately
       setUser(null);
+      
+      // Force reload the page to clear any cached state
+      window.location.href = '/';
     } catch (error) {
       console.error('Error signing out:', error);
-      throw error;
-    } finally {
+      // Even if there's an error, try to clear the user state
+      setUser(null);
       setIsLoading(false);
     }
   };
 
   const value = {
     user,
-    isLoading,
+    isLoading: isLoading && !isInitialized, // Only show loading on initial load
     isSeller: user?.user_type === 'seller',
     signIn,
     signUp,

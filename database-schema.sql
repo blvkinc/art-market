@@ -250,69 +250,64 @@ CREATE POLICY "Public can verify their own invitations by token"
   ON public.invitations FOR SELECT
   USING (true);
 
--- Function to handle new user registration
+-- Drop existing function if it exists
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
+
+-- Create the function to handle new user creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
-    user_role TEXT;
-    profile_id UUID;
+  username TEXT;
+  user_type TEXT;
 BEGIN
-    -- Get the user role from metadata
-    user_role := COALESCE(NEW.raw_user_meta_data->>'user_type', 'buyer');
-    
-    RAISE LOG 'Creating profile for user % with role %', NEW.id, user_role;
+  -- Get username from email or metadata
+  username := COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1));
+  user_type := COALESCE(NEW.raw_user_meta_data->>'user_type', 'buyer');
 
-    -- Create base profile
-    INSERT INTO public.profiles (
-        id,
-        email,
-        username,
-        full_name,
-        avatar_url,
-        user_type,
-        is_verified,
-        created_at,
-        updated_at
-    )
-    VALUES (
-        NEW.id,
-        NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
-        COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-        COALESCE(NEW.raw_user_meta_data->>'avatar_url', ''),
-        user_role,
-        false,
-        NOW(),
-        NOW()
-    )
-    RETURNING id INTO profile_id;
+  -- Create base profile
+  INSERT INTO public.profiles (
+    id,
+    username,
+    full_name,
+    avatar_url,
+    bio,
+    user_type,
+    is_artist,
+    is_verified
+  ) VALUES (
+    NEW.id,
+    username,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+    COALESCE(NEW.raw_user_meta_data->>'avatar_url', ''),
+    COALESCE(NEW.raw_user_meta_data->>'bio', ''),
+    user_type,
+    user_type = 'seller',
+    false
+  );
 
-    RAISE LOG 'Created base profile with ID: %', profile_id;
+  -- Create role-specific profile
+  IF user_type = 'seller' THEN
+    INSERT INTO public.seller_profiles (id) VALUES (NEW.id);
+  ELSE
+    INSERT INTO public.buyer_profiles (id) VALUES (NEW.id);
+  END IF;
 
-    -- Create role-specific profile
-    IF user_role = 'buyer' THEN
-        INSERT INTO public.buyer_profiles (id)
-        VALUES (profile_id);
-        RAISE LOG 'Created buyer profile for user %', profile_id;
-    ELSIF user_role = 'seller' THEN
-        INSERT INTO public.seller_profiles (id)
-        VALUES (profile_id);
-        RAISE LOG 'Created seller profile for user %', profile_id;
-    END IF;
-
-    RETURN NEW;
-EXCEPTION WHEN OTHERS THEN
+  RETURN NEW;
+EXCEPTION
+  WHEN OTHERS THEN
+    -- Log the error
     RAISE LOG 'Error in handle_new_user: %', SQLERRM;
-    RAISE LOG 'Error details: %', SQLSTATE;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger for new user registration
+-- Drop existing trigger if it exists
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+-- Create the trigger
 CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Function to clean up unverified users
 CREATE OR REPLACE FUNCTION public.cleanup_unverified_users()

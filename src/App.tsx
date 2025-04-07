@@ -13,11 +13,13 @@ import UserProfile from './pages/UserProfile';
 import UploadArtwork from './pages/UploadArtwork';
 import EditProfile from './pages/EditProfile';
 import Artworks from './pages/Artworks';
+import AdminDashboard from './pages/admin/AdminDashboard';
 
 // Auth Pages
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import ForgotPassword from './pages/auth/ForgotPassword';
+import ForceLogout from './pages/auth/ForceLogout';
 
 // Components
 import Header from './components/Header';
@@ -55,6 +57,7 @@ function App() {
   const [appReady, setAppReady] = useState(false);
   const [redirectInProgress, setRedirectInProgress] = useState(false);
   const [initialAuthCheckComplete, setInitialAuthCheckComplete] = useState(false);
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
 
   // Debug current authentication state
   useEffect(() => {
@@ -64,14 +67,28 @@ function App() {
       pathname: location.pathname,
       appReady,
       redirectInProgress,
-      initialAuthCheckComplete
+      initialAuthCheckComplete,
+      loadingTimeout
     });
     
     // Mark initial auth check as complete once loading is done
     if (!isLoading && !initialAuthCheckComplete) {
       setInitialAuthCheckComplete(true);
     }
-  }, [isLoading, user, location.pathname, appReady, redirectInProgress, initialAuthCheckComplete]);
+  }, [isLoading, user, location.pathname, appReady, redirectInProgress, initialAuthCheckComplete, loadingTimeout]);
+
+  // Set a timeout to prevent infinite loading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isLoading) {
+        console.log('App loading timeout reached, forcing app ready state');
+        setLoadingTimeout(true);
+        setAppReady(true);
+      }
+    }, 5000); // 5 seconds timeout
+
+    return () => clearTimeout(timer);
+  }, [isLoading]);
 
   // Handle authentication redirects and hash fragments
   useEffect(() => {
@@ -95,7 +112,7 @@ function App() {
       navigate('/login?verification_failed=true', { replace: true });
       return;
     }
-  }, [location.hash, navigate, redirectInProgress]);
+  }, [location.pathname, navigate, redirectInProgress]);
 
   // Reset redirect flag when URL changes
   useEffect(() => {
@@ -210,31 +227,32 @@ function App() {
 
   // Main app render with routes
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="min-h-screen bg-black text-white">
       <Header />
-      <main className="flex-grow">
-        <Routes>
-          {/* Protected Routes */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="/profile" element={<UserProfile />} />
-            <Route path="/profile/edit" element={<EditProfile />} />
-            <Route path="/upload" element={<UploadArtwork />} />
-          </Route>
-
-          {/* Public Routes */}
-          <Route path="/" element={<Home />} />
-          <Route path="/explore" element={<Artworks />} />
-          <Route path="/artists" element={<Artists />} />
-          <Route path="/artists/:id" element={<ArtistProfile />} />
-          <Route path="/artwork/:id" element={<ArtworkDetail />} />
-          
-          {/* Auth Routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/auth-error" element={<AuthError />} />
-        </Routes>
-      </main>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<Home />} />
+        <Route path="/explore" element={<Explore />} />
+        <Route path="/artists" element={<Artists />} />
+        <Route path="/artists/:id" element={<ArtistProfile />} />
+        <Route path="/artworks" element={<Artworks />} />
+        <Route path="/artworks/:id" element={<ArtworkDetail />} />
+        
+        {/* Auth routes */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/auth/error" element={<AuthError />} />
+        <Route path="/force-logout" element={<ForceLogout />} />
+        
+        {/* Protected routes */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/profile" element={<UserProfile />} />
+          <Route path="/profile/edit" element={<EditProfile />} />
+          <Route path="/upload" element={<UploadArtwork />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+        </Route>
+      </Routes>
       <Footer />
     </div>
   );
