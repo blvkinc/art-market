@@ -59,7 +59,7 @@ export async function uploadAvatar(userId: string, file: File) {
   // Upload the file to Supabase Storage
   const { error: uploadError } = await supabase
     .storage
-    .from('user-content')
+    .from('artwork-images')
     .upload(filePath, file);
 
   if (uploadError) {
@@ -69,7 +69,7 @@ export async function uploadAvatar(userId: string, file: File) {
   // Get the public URL
   const { data } = supabase
     .storage
-    .from('user-content')
+    .from('artwork-images')
     .getPublicUrl(filePath);
 
   // Update the user's profile with the new avatar URL

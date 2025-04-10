@@ -48,7 +48,7 @@ USING (auth.uid() = artist_id);
 
 -- Create storage bucket if it doesn't exist
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('user-content', 'user-content', true)
+VALUES ('artwork-images', 'artwork-images', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Drop existing storage policies if they exist
@@ -60,12 +60,12 @@ DROP POLICY IF EXISTS "Users can delete their own artwork images" ON storage.obj
 -- Create storage policies
 CREATE POLICY "Public Access"
 ON storage.objects FOR SELECT
-USING (bucket_id = 'user-content');
+USING (bucket_id = 'artwork-images');
 
 CREATE POLICY "Authenticated users can upload files"
 ON storage.objects FOR INSERT
 WITH CHECK (
-    bucket_id = 'user-content' 
+    bucket_id = 'artwork-images' 
     AND auth.role() = 'authenticated'
     AND (
         (storage.foldername(name))[1] = 'artworks'
@@ -76,7 +76,7 @@ WITH CHECK (
 CREATE POLICY "Users can update their own files"
 ON storage.objects FOR UPDATE
 USING (
-    bucket_id = 'user-content'
+    bucket_id = 'artwork-images'
     AND auth.role() = 'authenticated'
     AND (
         (storage.foldername(name))[1] = 'artworks'
@@ -87,7 +87,7 @@ USING (
 CREATE POLICY "Users can delete their own files"
 ON storage.objects FOR DELETE
 USING (
-    bucket_id = 'user-content'
+    bucket_id = 'artwork-images'
     AND auth.role() = 'authenticated'
     AND (
         (storage.foldername(name))[1] = 'artworks'

@@ -20,6 +20,22 @@ interface Artwork {
   };
 }
 
+interface UserProfile {
+  id: string;
+  email: string;
+  username: string;
+  full_name: string;
+  avatar_url: string;
+  bio: string;
+  website: string;
+  user_type: 'buyer' | 'seller' | 'admin';
+  is_artist: boolean;
+  is_verified: boolean;
+  artwork_count?: number;
+  follower_count?: number;
+  following_count?: number;
+}
+
 const UserProfile = () => {
   const { user, signOut, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -30,10 +46,85 @@ const UserProfile = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   
   const contentRef = useRef<HTMLDivElement>(null);
   const contentInView = useInView(contentRef, { once: true, amount: 0.1 });
   
+  // Fetch complete user profile
+  const fetchUserProfile = async () => {
+    if (!user) return;
+    
+    try {
+      console.log('Fetching user profile for:', user.id);
+      
+      // Fetch base profile
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        throw profileError;
+      }
+
+      // Fetch role-specific profile
+      const roleProfileTable = user.user_type === 'seller' ? 'seller_profiles' : 'buyer_profiles';
+      const { data: roleProfile, error: roleError } = await supabase
+        .from(roleProfileTable)
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (roleError && roleError.code !== 'PGRST116') { // PGRST116 is "not found"
+        console.error('Error fetching role profile:', roleError);
+        throw roleError;
+      }
+
+      // Fetch artwork count for sellers
+      let artworkCount = 0;
+      if (user.user_type === 'seller') {
+        const { count, error: countError } = await supabase
+          .from('artworks')
+          .select('*', { count: 'exact', head: true })
+          .eq('artist_id', user.id);
+
+        if (!countError) {
+          artworkCount = count || 0;
+        }
+      }
+
+      // Fetch follower count
+      const { count: followerCount, error: followerError } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', user.id);
+
+      // Fetch following count
+      const { count: followingCount, error: followingError } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('follower_id', user.id);
+
+      // Combine all profile data
+      const completeProfile: UserProfile = {
+        ...profile,
+        artwork_count: artworkCount,
+        follower_count: followerCount || 0,
+        following_count: followingCount || 0,
+        ...roleProfile
+      };
+
+      console.log('Complete profile fetched:', completeProfile);
+      setUserProfile(completeProfile);
+    } catch (err) {
+      console.error('Error fetching user profile:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch user profile');
+    }
+  };
+
   // Debug log for component mount
   useEffect(() => {
     console.log('UserProfile component mounted', {
@@ -41,19 +132,14 @@ const UserProfile = () => {
       authLoading
     });
     
-    // Force profile load after a timeout in case it gets stuck
-    const timer = setTimeout(() => {
-      if (!profileLoaded && user) {
-        console.log('Forcing profile loaded state after timeout');
-        setProfileLoaded(true);
-      }
-    }, 3000);
+    if (user) {
+      fetchUserProfile();
+    }
     
     return () => {
       console.log('UserProfile component unmounted');
-      clearTimeout(timer);
     };
-  }, [user, authLoading, profileLoaded]);
+  }, [user, authLoading]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -93,15 +179,11 @@ const UserProfile = () => {
             artist:profiles(username, full_name)
           `);
 
-        // If user is a seller, show their artworks
-        // If user is a buyer, show their collected/purchased artworks
         if (user.user_type === 'seller') {
           console.log('User is a seller, fetching their artworks');
           query = query.eq('artist_id', user.id);
         } else {
           console.log('User is a buyer, showing empty state');
-          // For buyers, you might want to implement a separate table for purchased/collected artworks
-          // For now, we'll just show an empty state
         }
 
         query = query.order('created_at', { ascending: false });
@@ -125,11 +207,7 @@ const UserProfile = () => {
     };
 
     if (user) {
-      // Short delay to ensure user data is fully loaded
-      const timer = setTimeout(() => {
-        fetchArtworks();
-      }, 500);
-      return () => clearTimeout(timer);
+      fetchArtworks();
     } else {
       setProfileLoaded(true);
     }
@@ -145,9 +223,9 @@ const UserProfile = () => {
   };
 
   const getUserRoleBadge = () => {
-    if (!user) return null;
+    if (!userProfile) return null;
     
-    const role = user.user_type;
+    const role = userProfile.user_type;
     const colors = {
       admin: 'bg-red-500/20 text-red-200 border-red-500/50',
       seller: 'bg-blue-500/20 text-blue-200 border-blue-500/50',
@@ -171,7 +249,7 @@ const UserProfile = () => {
   }
 
   // Show loading state while profile is loading
-  if (!profileLoaded && user) {
+  if (!profileLoaded || !userProfile) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>

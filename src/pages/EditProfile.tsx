@@ -127,7 +127,7 @@ const EditProfile = () => {
 
         // Get the public URL
         const { data: urlData } = supabase.storage
-          .from('user-content')
+          .from('artwork-images')
           .getPublicUrl(filePath);
 
         if (!urlData?.publicUrl) {

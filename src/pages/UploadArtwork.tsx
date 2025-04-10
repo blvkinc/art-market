@@ -54,7 +54,7 @@ const UploadArtwork = () => {
 
       console.log('Uploading artwork to:', filePath);
       const { error: uploadError, data: uploadData } = await supabase.storage
-        .from('user-content')
+        .from('artwork-images')
         .upload(filePath, formData.image, {
           cacheControl: '3600',
           upsert: true
@@ -69,7 +69,7 @@ const UploadArtwork = () => {
 
       // Get the public URL
       const { data: urlData } = supabase.storage
-        .from('user-content')
+        .from('artwork-images')
         .getPublicUrl(filePath);
 
       if (!urlData?.publicUrl) {
@@ -79,6 +79,15 @@ const UploadArtwork = () => {
       console.log('Public URL:', urlData.publicUrl);
 
       // Insert artwork into database
+      console.log('Inserting artwork into database with data:', {
+        title: formData.title,
+        description: formData.description,
+        price: formData.price,
+        image_url: urlData.publicUrl,
+        artist_id: user.id,
+        status: 'active'
+      });
+
       const { error: insertError, data: insertData } = await supabase
         .from('artworks')
         .insert({
@@ -87,17 +96,27 @@ const UploadArtwork = () => {
           price: formData.price,
           image_url: urlData.publicUrl,
           artist_id: user.id,
-          status: 'active'
+          status: 'active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .select()
         .single();
 
       if (insertError) {
-        console.error('Insert error:', insertError);
+        console.error('Database insert error:', insertError);
+        // Try to delete the uploaded image if database insert fails
+        const { error: deleteError } = await supabase.storage
+          .from('artwork-images')
+          .remove([filePath]);
+          
+        if (deleteError) {
+          console.error('Failed to delete uploaded image after database error:', deleteError);
+        }
         throw insertError;
       }
 
-      console.log('Artwork created:', insertData);
+      console.log('Artwork created successfully:', insertData);
 
       setSuccess('Artwork uploaded successfully!');
       setTimeout(() => {

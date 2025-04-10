@@ -41,7 +41,7 @@ const Artworks = () => {
         .from('artworks')
         .select(`
           *,
-          artist:profiles(username, full_name)
+          artist:profiles!artworks_artist_id_fkey(username, full_name)
         `)
         .eq('status', 'active');
 
@@ -59,8 +59,12 @@ const Artworks = () => {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching artworks:', error);
+        throw error;
+      }
 
+      console.log('Fetched artworks:', data);
       setArtworks(data || []);
     } catch (err) {
       console.error('Error fetching artworks:', err);
